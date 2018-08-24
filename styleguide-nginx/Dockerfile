@@ -13,5 +13,3 @@ RUN apt-get -yq install gcc make php ruby ruby-dev nodejs
 
 RUN echo "gem: --no-rdoc --no-ri" >> /etc/gemrc
 RUN gem install compass
-
-#CMD nginx -g 'daemon off;'
