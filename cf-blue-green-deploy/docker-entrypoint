@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+
+set -e
+
+# Login
+cf api ${CF_API}
+cf auth # Uses CF_USERNAME and CF_PASSWORD env vars
+cf target -o ${CF_ORG} -s ${CF_SPACE}
+echo
+
+# Get the GUID of the domain
+domain_guid=$(cf curl "/v3/domains?names=${CF_DOMAIN}" | jq -Mr .resources[0].guid)
+
+# Get the GUID of the app with the hostname + domain route mapped to it
+old_app_guid=$(cf curl "/v3/routes?domain_guids=${domain_guid}&hosts=${CF_HOSTNAME}" | jq -Mr .resources[0].destinations[0].app.guid)
+
+if [ "${old_app_guid}" = "null" ]; then
+  echo "No old mirror. Assuming first push."
+  new_mirror="blue"
+  old_mirror="null"
+else
+  # Get the name of the live, i.e. old, app
+  # cf curl "/v3/apps/${old_app_guid}"
+  old_app_name=$(cf curl "/v3/apps/${old_app_guid}" | jq -Mr .name)
+
+  if [ "${old_app_name}" = "${CF_APP_NAME}-blue" ]; then
+    old_mirror="blue"
+    new_mirror="green"
+  elif [ "${old_app_name}" = "${CF_APP_NAME}-green" ]; then
+    old_mirror="green"
+    new_mirror="blue"
+  else
+    echo "Unknown old mirror: ${old_app_name}"
+    exit 1
+  fi
+fi
+
+echo "Old mirror: ${old_mirror}"
+echo "New mirror: ${new_mirror}"
+echo
+
+# Blue/green deploy
+cf push ${CF_APP_NAME}-${new_mirror} $@
+
+cf map-route ${CF_APP_NAME}-${new_mirror} ${CF_DOMAIN} -n ${CF_HOSTNAME}
+if [ "${old_mirror}" != "null" ]; then
+  cf unmap-route ${CF_APP_NAME}-${old_mirror} ${CF_DOMAIN} -n ${CF_HOSTNAME}
+  cf stop ${CF_APP_NAME}-${old_mirror}
+fi
+
+echo "All done."
