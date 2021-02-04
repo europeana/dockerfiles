@@ -2,17 +2,32 @@
 
 set -e
 
+domain_from_route() {
+  echo $1 | grep -Po '(?<=\.)(.+)$'
+}
+hostname_from_route() {
+  echo $1 | grep -Po '^([^.]+)'
+}
+
 # Login
 cf api ${CF_API}
 cf auth # Uses CF_USERNAME and CF_PASSWORD env vars
 cf target -o ${CF_ORG} -s ${CF_SPACE}
 echo
 
+# Get the primary route from the first in CF_ROUTES
+routes=(${CF_ROUTES})
+primary_route=${routes[0]}
+echo "Primary route: ${primary_route}"
+
+primary_route_domain=$(domain_from_route ${primary_route})
+primary_route_hostname=$(hostname_from_route ${primary_route})
+
 # Get the GUID of the domain
-domain_guid=$(cf curl "/v3/domains?names=${CF_DOMAIN}" | jq -Mr .resources[0].guid)
+domain_guid=$(cf curl "/v3/domains?names=${primary_route_domain}" | jq -Mr .resources[0].guid)
 
 # Get the GUID of the app with the hostname + domain route mapped to it
-old_app_guid=$(cf curl "/v3/routes?domain_guids=${domain_guid}&hosts=${CF_HOSTNAME}" | jq -Mr .resources[0].destinations[0].app.guid)
+old_app_guid=$(cf curl "/v3/routes?domain_guids=${domain_guid}&hosts=${primary_route_hostname}" | jq -Mr .resources[0].destinations[0].app.guid)
 
 if [ "${old_app_guid}" = "null" ]; then
   echo "No old mirror. Assuming first push."
@@ -20,7 +35,6 @@ if [ "${old_app_guid}" = "null" ]; then
   old_mirror="null"
 else
   # Get the name of the live, i.e. old, app
-  # cf curl "/v3/apps/${old_app_guid}"
   old_app_name=$(cf curl "/v3/apps/${old_app_guid}" | jq -Mr .name)
 
   if [ "${old_app_name}" = "${CF_APP_NAME}-blue" ]; then
@@ -33,19 +47,40 @@ else
     echo "Unknown old mirror: ${old_app_name}"
     exit 1
   fi
+
+  new_app_name=${CF_APP_NAME}-${new_mirror}
 fi
 
 echo "Old mirror: ${old_mirror}"
 echo "New mirror: ${new_mirror}"
 echo
 
-# Blue/green deploy
-cf push ${CF_APP_NAME}-${new_mirror} $@
+# Blue-green deployment
+cf push ${new_app_name} $@
 
-cf map-route ${CF_APP_NAME}-${new_mirror} ${CF_DOMAIN} -n ${CF_HOSTNAME}
+# Map routes
+for route in ${CF_ROUTES}; do
+  route_domain=$(domain_from_route ${route})
+  route_hostname=$(hostname_from_route ${route})
+
+  cf map-route ${new_app_name} ${route_domain} -n ${route_hostname}
+  if [ "${old_mirror}" != "null" ]; then
+    cf unmap-route ${old_app_name} ${route_domain} -n ${route_hostname}
+  fi
+done
+
 if [ "${old_mirror}" != "null" ]; then
-  cf unmap-route ${CF_APP_NAME}-${old_mirror} ${CF_DOMAIN} -n ${CF_HOSTNAME}
-  cf stop ${CF_APP_NAME}-${old_mirror}
+  cf stop ${old_app_name}
 fi
 
-echo "All done."
+echo "Blue-green deployment done"
+echo
+
+if [ "${POST_DEPLOY_SCRIPT}" != "" ]; then
+  echo "Running post-deploy script ${POST_DEPLOY_SCRIPT}"
+  echo
+  ${POST_DEPLOY_SCRIPT} ${old_app_name} ${new_app_name}
+  echo
+fi
+
+echo "OK"

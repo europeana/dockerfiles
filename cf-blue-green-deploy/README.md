@@ -28,13 +28,13 @@ Docker container. All are **required** at run time.
 * `CF_PASSWORD`: password
 * `CF_ORG`: org
 * `CF_SPACE`: space
-* `CF_DOMAIN`: route domain
-* `CF_HOSTNAME`: route hostname
+* `CF_ROUTES`: route(s) for the app, separated by space
 * `CF_APP_NAME`: app name, to which the `-blue` or `-green` suffix will be added
 
 It is suggested to copy the supplied [.env.example](./.env.example) to .env,
 populate for your CF provider and app, and pass to Docker when running the
 image, with `--env-file .env`. All following examples assume such configuration.
+
 
 ### Run
 
@@ -73,6 +73,15 @@ docker run --env-file .env \
        europeana/cf-blue-green-deploy \
        --docker-image nginx -m 32M
 ```
+
+### Hooks
+
+To run additional commands inside the container after successful blue-green
+deployment, set the env var `POST_DEPLOY_SCRIPT` to the path to an executable
+script, which will receive the now-active colour as a command-line argument.
+
+This can be used, for instance, to map additional routes, add network polices,
+or apply an auto-scaling policy.
 
 
 ## How it works
