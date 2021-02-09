@@ -5,82 +5,97 @@ set -e
 domain_from_route() {
   echo $1 | grep -Po '(?<=\.)(.+)$'
 }
+
 hostname_from_route() {
   echo $1 | grep -Po '^([^.]+)'
 }
 
-# Login
-cf api ${CF_API}
-cf auth # Uses CF_USERNAME and CF_PASSWORD env vars
-cf target -o ${CF_ORG} -s ${CF_SPACE}
-echo
+login() {
+  # Login
+  cf api ${CF_API}
+  cf auth # Uses CF_USERNAME and CF_PASSWORD env vars
+  cf target -o ${CF_ORG} -s ${CF_SPACE}
+  echo
+}
 
-# Get the primary route from the first in CF_ROUTES
-routes=(${CF_ROUTES})
-primary_route=${routes[0]}
-echo "Primary route: ${primary_route}"
+deploy() {
+  login
 
-primary_route_domain=$(domain_from_route ${primary_route})
-primary_route_hostname=$(hostname_from_route ${primary_route})
+  # Get the primary route from the first in CF_ROUTES
+  routes=(${CF_ROUTES})
+  primary_route=${routes[0]}
+  echo "Primary route: ${primary_route}"
 
-# Get the GUID of the domain
-domain_guid=$(cf curl "/v3/domains?names=${primary_route_domain}" | jq -Mr .resources[0].guid)
+  primary_route_domain=$(domain_from_route ${primary_route})
+  primary_route_hostname=$(hostname_from_route ${primary_route})
 
-# Get the GUID of the app with the hostname + domain route mapped to it
-old_app_guid=$(cf curl "/v3/routes?domain_guids=${domain_guid}&hosts=${primary_route_hostname}" | jq -Mr .resources[0].destinations[0].app.guid)
+  # Get the GUID of the domain
+  domain_guid=$(cf curl "/v3/domains?names=${primary_route_domain}" | jq -Mr .resources[0].guid)
 
-if [ "${old_app_guid}" = "null" ]; then
-  echo "No old mirror. Assuming first push."
-  new_mirror="blue"
-  old_mirror="null"
-else
-  # Get the name of the live, i.e. old, app
-  old_app_name=$(cf curl "/v3/apps/${old_app_guid}" | jq -Mr .name)
+  # Get the GUID of the app with the hostname + domain route mapped to it
+  old_app_guid=$(cf curl "/v3/routes?domain_guids=${domain_guid}&hosts=${primary_route_hostname}" | jq -Mr .resources[0].destinations[0].app.guid)
 
-  if [ "${old_app_name}" = "${CF_APP_NAME}-blue" ]; then
-    old_mirror="blue"
-    new_mirror="green"
-  elif [ "${old_app_name}" = "${CF_APP_NAME}-green" ]; then
-    old_mirror="green"
+  if [ "${old_app_guid}" = "null" ]; then
+    echo "No old mirror. Assuming first push."
     new_mirror="blue"
+    old_mirror="null"
   else
-    echo "Unknown old mirror: ${old_app_name}"
-    exit 1
+    # Get the name of the live, i.e. old, app
+    old_app_name=$(cf curl "/v3/apps/${old_app_guid}" | jq -Mr .name)
+
+    if [ "${old_app_name}" = "${CF_APP_NAME}-blue" ]; then
+      old_mirror="blue"
+      new_mirror="green"
+    elif [ "${old_app_name}" = "${CF_APP_NAME}-green" ]; then
+      old_mirror="green"
+      new_mirror="blue"
+    else
+      echo "Unknown old mirror: ${old_app_name}"
+      exit 1
+    fi
   fi
 
   new_app_name=${CF_APP_NAME}-${new_mirror}
-fi
 
-echo "Old mirror: ${old_mirror}"
-echo "New mirror: ${new_mirror}"
-echo
+  echo "Old mirror: ${old_mirror}"
+  echo "New mirror: ${new_mirror}"
+  echo
 
-# Blue-green deployment
-cf push ${new_app_name} $@
+  cf push ${new_app_name} $@
 
-# Map routes
-for route in ${CF_ROUTES}; do
-  route_domain=$(domain_from_route ${route})
-  route_hostname=$(hostname_from_route ${route})
+  # Map routes
+  for route in ${CF_ROUTES}; do
+    echo "Remapping ${route}"
+    route_domain=$(domain_from_route ${route})
+    route_hostname=$(hostname_from_route ${route})
 
-  cf map-route ${new_app_name} ${route_domain} -n ${route_hostname}
+    cf map-route ${new_app_name} ${route_domain} -n ${route_hostname}
+    if [ "${old_mirror}" != "null" ]; then
+      cf unmap-route ${old_app_name} ${route_domain} -n ${route_hostname}
+    fi
+  done
+
   if [ "${old_mirror}" != "null" ]; then
-    cf unmap-route ${old_app_name} ${route_domain} -n ${route_hostname}
+    cf stop ${old_app_name}
   fi
-done
 
-if [ "${old_mirror}" != "null" ]; then
-  cf stop ${old_app_name}
-fi
-
-echo "Blue-green deployment done"
-echo
-
-if [ "${POST_DEPLOY_SCRIPT}" != "" ]; then
-  echo "Running post-deploy script ${POST_DEPLOY_SCRIPT}"
+  echo "Blue-green deployment done"
   echo
-  ${POST_DEPLOY_SCRIPT} ${old_app_name} ${new_app_name}
-  echo
-fi
 
-echo "OK"
+  if [ "${POST_DEPLOY_SCRIPT}" != "" ]; then
+    echo "Running post-deploy script ${POST_DEPLOY_SCRIPT}"
+    echo
+    ${POST_DEPLOY_SCRIPT} ${old_app_name} ${new_app_name}
+    echo
+  fi
+
+  echo "OK"
+}
+
+if [ "$1" == "deploy" ]; then
+  # Default command performs blue-green deployment, with additional args following
+  deploy "${@:2}"
+else
+  # Otherwise run whatever was in the command
+  exec "$@"
+fi

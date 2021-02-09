@@ -20,6 +20,5 @@ ENV CF_API= \
 
 COPY docker-entrypoint /
 
-# RUN grep --version
-
 ENTRYPOINT ["/docker-entrypoint"]
+CMD ["deploy"]

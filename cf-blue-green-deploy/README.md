@@ -41,13 +41,13 @@ image, with `--env-file .env`. All following examples assume such configuration.
 #### `cf push` arguments
 
 No arguments are set by default on the `cf push` command, but should instead
-be supplied as the `docker run` command.
+be supplied as the `docker run` command, following `deploy`.
 
 For example:
 ```
 docker run --env-file .env \
            europeana/cf-blue-green-deploy \
-           -f manifest.yml --vars-file vars.yml
+           deploy -f manifest.yml --vars-file vars.yml
 ```
 
 This is equivalent to running: `cf push ${BLUE_GREEN_APP_NAME} -f manifest.yml --vars-file vars.yml`
@@ -62,7 +62,7 @@ For example:
 ```
 docker run --env-file .env --mount type=bind,source=/path/to/app,target=/deploy \
            europeana/cf-blue-green-deploy \
-           -f manifest.yml
+           deploy -f manifest.yml
 ```
 
 #### With a Docker image
@@ -71,7 +71,7 @@ For example:
 ```
 docker run --env-file .env \
        europeana/cf-blue-green-deploy \
-       --docker-image nginx -m 32M
+       deploy --docker-image nginx -m 32M
 ```
 
 ### Hooks
@@ -84,7 +84,7 @@ This can be used, for instance, to map additional routes, add network polices,
 or apply an auto-scaling policy.
 
 
-## How it works
+## Route-based switching
 
 This blue-green deployment agent operates based on routing. It is given a
 single primary route for the application, and whichever colour is presently
