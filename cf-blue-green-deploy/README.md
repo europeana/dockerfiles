@@ -74,15 +74,6 @@ docker run --env-file .env \
        deploy --docker-image nginx -m 32M
 ```
 
-### Hooks
-
-To run additional commands inside the container after successful blue-green
-deployment, set the env var `POST_DEPLOY_SCRIPT` to the path to an executable
-script, which will receive the now-active colour as a command-line argument.
-
-This can be used, for instance, to map additional routes, add network polices,
-or apply an auto-scaling policy.
-
 
 ## Route-based switching
 

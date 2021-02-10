@@ -15,8 +15,7 @@ ENV CF_API= \
     CF_ORG= \
     CF_SPACE= \
     CF_ROUTES= \
-    CF_APP_NAME= \
-    POST_DEPLOY_SCRIPT=
+    CF_APP_NAME=
 
 COPY docker-entrypoint /
 

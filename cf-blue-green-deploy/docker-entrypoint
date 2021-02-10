@@ -82,13 +82,6 @@ deploy() {
   echo "Blue-green deployment done"
   echo
 
-  if [ "${POST_DEPLOY_SCRIPT}" != "" ]; then
-    echo "Running post-deploy script ${POST_DEPLOY_SCRIPT}"
-    echo
-    ${POST_DEPLOY_SCRIPT} ${old_app_name} ${new_app_name}
-    echo
-  fi
-
   echo "OK"
 }
 
