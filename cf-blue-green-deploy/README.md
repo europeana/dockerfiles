@@ -101,6 +101,35 @@ to point to it.
 5. The old colour is stopped (if there is one)
 
 
+## Hooks
+
+A number of hooks are available to run custom commands during the blue-green
+deployment lifecycle:
+
+* `pre-login`: before logging in to CF; no arguments
+* `post-login`: after logging in to CF; no arguments
+* `pre-push`: before pushing the new app to CF; arguments are old and new app names
+* `post-push`: after pushing the new app to CF; arguments are old and new app names
+* `post-routing`: after remapping the routes from old to new; arguments are old and new app names
+* `post-deploy`: after stopping the old app and deployment is complete; arguments are old and new app names
+
+To use these hooks, provide executable files in /hooks named after the hook.
+For example:
+**/hooks/post-login:**
+```
+#!/bin/sh
+
+cf apps
+```
+
+**/hooks/post-deploy:**
+```
+#!/bin/sh
+
+new_app_name=$2
+cf app ${new_app_name}
+```
+
 ## License
 
 See [LICENSE.md](../LICENSE.md).

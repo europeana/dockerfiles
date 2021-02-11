@@ -18,8 +18,20 @@ login() {
   echo
 }
 
+run_hook() {
+  hook_path=/hooks/$1
+  if [ -f "${hook_path}" ]; then
+    echo "Running hook $1"
+    ${hook_path} "${@:2}"
+    echo "OK"
+    echo
+  fi
+}
+
 deploy() {
+  run_hook "pre-login"
   login
+  run_hook "post-login"
 
   # Get the primary route from the first in CF_ROUTES
   routes=(${CF_ROUTES})
@@ -61,7 +73,9 @@ deploy() {
   echo "New mirror: ${new_mirror}"
   echo
 
+  run_hook "pre-push" ${old_app_name} ${new_app_name}
   cf push ${new_app_name} $@
+  run_hook "post-push" ${old_app_name} ${new_app_name}
 
   # Map routes
   for route in ${CF_ROUTES}; do
@@ -75,9 +89,13 @@ deploy() {
     fi
   done
 
+  run_hook "post-routing" ${old_app_name} ${new_app_name}
+
   if [ "${old_mirror}" != "null" ]; then
     cf stop ${old_app_name}
   fi
+
+  run_hook "post-deploy" ${old_app_name} ${new_app_name}
 
   echo "Blue-green deployment done"
   echo
