@@ -10,6 +10,18 @@ hostname_from_route() {
   echo $1 | grep -Po '^([^.]+)'
 }
 
+app_guid() {
+  cf app $1 --guid | head -1
+}
+
+app_process_guid() {
+  cf curl /v3/apps/$1/processes | jq -Mr '.resources[0].guid'
+}
+
+count_running_instances() {
+  cf curl /v3/processes/$1/stats | jq -Mr '[.resources[] | select(.state=="RUNNING")] | length'
+}
+
 login() {
   # Login
   cf api ${CF_API}
@@ -21,14 +33,48 @@ login() {
 run_hook() {
   hook_path=/hooks/$1
   if [ -f "${hook_path}" ]; then
-    echo
     echo "Running hook $1"
     ${hook_path} "${@:2}"
+    echo "OK"
     echo
   fi
 }
 
+wait_for_running_instances() {
+  new_app_name=$1
+  instance_min_count=$2
+
+  new_app_guid=$(app_guid ${new_app_name})
+  new_app_process_guid=$(app_process_guid ${new_app_guid})
+
+  startup_timeout=${CF_STARTUP_TIMEOUT}
+  startup_interval=3
+
+  echo
+  echo "Allowing ${startup_timeout}s for ${instance_min_count} RUNNING instances..."
+
+  new_app_running_instances=$(count_running_instances ${new_app_process_guid})
+
+  startup_start=$(date +%s)
+  while [ ${new_app_running_instances} -lt ${instance_min_count} ]; do
+    startup_elapsed=$(($(date +%s) - ${startup_start}))
+    if [ ${startup_elapsed} -ge ${startup_timeout} ]; then
+      echo
+      echo "ERROR: Failed to start ${instance_min_count} RUNNING instances in ${startup_timeout}s"
+      exit 1
+    fi
+    echo "${new_app_running_instances}/${instance_min_count}..."
+    sleep ${startup_interval} && startup_timer=$((${startup_timer} + ${startup_interval}))
+    new_app_running_instances=$(count_running_instances ${new_app_process_guid})
+  done
+  echo "${new_app_running_instances}/${instance_min_count}..."
+  echo "OK"
+}
+
 deploy() {
+  push_args="$@"
+  echo "push_args=$push_args"
+
   run_hook "pre-login"
   login
   run_hook "post-login"
@@ -48,9 +94,10 @@ deploy() {
   old_app_guid=$(cf curl "/v3/routes?domain_guids=${domain_guid}&hosts=${primary_route_hostname}" | jq -Mr .resources[0].destinations[0].app.guid)
 
   if [ "${old_app_guid}" = "null" ]; then
-    echo "No old mirror. Assuming first push."
+    echo "No old mirror: assuming first push."
     new_mirror="blue"
     old_mirror="null"
+    old_app_name="null"
   else
     # Get the name of the live, i.e. old, app
     old_app_name=$(cf curl "/v3/apps/${old_app_guid}" | jq -Mr .name)
@@ -69,12 +116,50 @@ deploy() {
 
   new_app_name=${CF_APP_NAME}-${new_mirror}
 
-  echo "Old mirror: ${old_mirror}"
-  echo "New mirror: ${new_mirror}"
+  echo "Old mirror:    ${old_mirror}"
+  echo "New mirror:    ${new_mirror}"
   echo
 
+  cf create-app ${new_app_name} --app-type ${CF_APP_TYPE}
+
+  # Prevent pre-existing autoscaling from interfering with the initial scaling up
+  echo "Detaching autoscaling policy"
+  cf detach-autoscaling-policy ${new_app_name}
+
+  autoscaling_policy_file="/autoscaling-policy.json"
+
+  if [ "${old_app_name}" = "null" ]; then
+    instance_min_count=1
+  else
+    # If no autoscaling policy supplied, copy from old mirror
+    if [ ! -f ${autoscaling_policy_file} ]; then
+      echo "Copying autoscaling policy from ${old_app_name}"
+      set +e
+      cf autoscaling-policy ${old_app_name} | tail -n +2 > ${autoscaling_policy_file}
+      set -e
+      echo
+    fi
+
+    old_app_process_guid=$(app_process_guid ${old_app_guid})
+    instance_min_count=$(count_running_instances ${old_app_process_guid})
+  fi
+
+  # Attach autoscaling policy
+  if [ -f ${autoscaling_policy_file} ]; then
+    autoscaling_policy_min_count=$(cat ${autoscaling_policy_file} | jq -Mr .instance_min_count)
+    if [ ${autoscaling_policy_min_count} -gt ${instance_min_count} ]; then
+      instance_min_count=${autoscaling_policy_min_count}
+    fi
+
+    echo "Attaching autoscaling policy"
+    cf attach-autoscaling-policy ${new_app_name} ${autoscaling_policy_file}
+  fi
+
+  # Push
   run_hook "pre-push" ${old_app_name} ${new_app_name}
-  cf push ${new_app_name} $@
+  cf push ${new_app_name} --instances ${instance_min_count} ${push_args}
+  wait_for_running_instances ${new_app_name} ${instance_min_count}
+  echo
   run_hook "post-push" ${old_app_name} ${new_app_name}
 
   # Map routes
@@ -97,10 +182,7 @@ deploy() {
 
   run_hook "post-deploy" ${old_app_name} ${new_app_name}
 
-  echo "Blue-green deployment done"
-  echo
-
-  echo "OK"
+  echo "Blue-green deployment done."
 }
 
 if [ "$1" == "deploy" ]; then
