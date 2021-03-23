@@ -24,15 +24,16 @@ count_running_instances() {
 
 login() {
   # Login
+  echo
   cf api ${CF_API}
   cf auth # Uses CF_USERNAME and CF_PASSWORD env vars
   cf target -o ${CF_ORG} -s ${CF_SPACE}
-  echo
 }
 
 run_hook() {
   hook_path=/hooks/$1
   if [ -f "${hook_path}" ]; then
+    echo
     echo "Running hook $1"
     echo
     ${hook_path} "${@:2}"
@@ -41,7 +42,7 @@ run_hook() {
 
 wait_for_running_instances() {
   new_app_name=$1
-  instance_min_count=$2
+  instance_count=$2
 
   new_app_guid=$(app_guid ${new_app_name})
   new_app_process_guid=$(app_process_guid ${new_app_guid})
@@ -50,23 +51,23 @@ wait_for_running_instances() {
   startup_interval=3
 
   echo
-  echo "Allowing ${startup_timeout}s for ${instance_min_count} RUNNING instances..."
+  echo "Allowing ${startup_timeout}s for ${instance_count} RUNNING instances..."
 
   new_app_running_instances=$(count_running_instances ${new_app_process_guid})
 
   startup_start=$(date +%s)
-  while [ ${new_app_running_instances} -lt ${instance_min_count} ]; do
+  while [ ${new_app_running_instances} -lt ${instance_count} ]; do
     startup_elapsed=$(($(date +%s) - ${startup_start}))
     if [ ${startup_elapsed} -ge ${startup_timeout} ]; then
       echo
-      echo "ERROR: Failed to start ${instance_min_count} RUNNING instances in ${startup_timeout}s"
+      echo "ERROR: Failed to start ${instance_count} RUNNING instances in ${startup_timeout}s"
       exit 1
     fi
-    echo "${new_app_running_instances}/${instance_min_count}..."
+    echo "${new_app_running_instances}/${instance_count}..."
     sleep ${startup_interval} && startup_timer=$((${startup_timer} + ${startup_interval}))
     new_app_running_instances=$(count_running_instances ${new_app_process_guid})
   done
-  echo "${new_app_running_instances}/${instance_min_count}..."
+  echo "${new_app_running_instances}/${instance_count}..."
   echo "OK"
 }
 
@@ -115,54 +116,62 @@ deploy() {
 
   new_app_name=${CF_APP_NAME}-${new_mirror}
 
+  echo
   echo "Old mirror:    ${old_mirror}"
   echo "New mirror:    ${new_mirror}"
-  echo
 
   cf create-app ${new_app_name} --app-type ${CF_APP_TYPE}
 
   # Prevent pre-existing autoscaling from interfering with the initial scaling up
+  echo
   echo "Detaching autoscaling policy"
   cf detach-autoscaling-policy ${new_app_name}
 
   autoscaling_policy_file="/autoscaling-policy.json"
 
   if [ "${old_app_name}" = "null" ]; then
-    instance_min_count=1
+    instance_count=1
   else
     # If no autoscaling policy supplied, copy from old mirror
     if [ ! -f ${autoscaling_policy_file} ]; then
+      echo
       echo "Copying autoscaling policy from ${old_app_name}"
       set +e
       cf autoscaling-policy ${old_app_name} | tail -n +2 > ${autoscaling_policy_file}
       set -e
-      echo
     fi
 
     old_app_process_guid=$(app_process_guid ${old_app_guid})
-    instance_min_count=$(count_running_instances ${old_app_process_guid})
+    instance_count=$(count_running_instances ${old_app_process_guid})
   fi
 
-  # Attach autoscaling policy
+  # Adjust instance count based on autoscaling policy
   if [ -f ${autoscaling_policy_file} ]; then
     autoscaling_policy_min_count=$(cat ${autoscaling_policy_file} | jq -Mr .instance_min_count)
-    if [ ${autoscaling_policy_min_count} -gt ${instance_min_count} ]; then
-      instance_min_count=${autoscaling_policy_min_count}
+    autoscaling_policy_max_count=$(cat ${autoscaling_policy_file} | jq -Mr .instance_max_count)
+    if [ ${autoscaling_policy_min_count} -gt ${instance_count} ]; then
+      instance_count=${autoscaling_policy_min_count}
     fi
+    if [ ${autoscaling_policy_max_count} -lt ${instance_count} ]; then
+      instance_count=${autoscaling_policy_max_count}
+    fi
+  fi
 
+  # Push & scale
+  run_hook "pre-push" ${old_app_name} ${new_app_name}
+  cf push ${new_app_name} --instances ${instance_count} ${push_args}
+  wait_for_running_instances ${new_app_name} ${instance_count}
+  if [ -f ${autoscaling_policy_file} ]; then
+    echo
     echo "Attaching autoscaling policy"
     cf attach-autoscaling-policy ${new_app_name} ${autoscaling_policy_file}
   fi
 
-  # Push
-  run_hook "pre-push" ${old_app_name} ${new_app_name}
-  cf push ${new_app_name} --instances ${instance_min_count} ${push_args}
-  wait_for_running_instances ${new_app_name} ${instance_min_count}
-  echo
   run_hook "post-push" ${old_app_name} ${new_app_name}
 
   # Map routes
   for route in ${CF_ROUTES}; do
+    echo
     echo "Remapping ${route}"
     route_domain=$(domain_from_route ${route})
     route_hostname=$(hostname_from_route ${route})
@@ -181,6 +190,7 @@ deploy() {
 
   run_hook "post-deploy" ${old_app_name} ${new_app_name}
 
+  echo
   echo "Blue-green deployment done."
 }
 

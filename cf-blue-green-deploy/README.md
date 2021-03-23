@@ -111,7 +111,8 @@ that will be copied to the new.
 
 In addition, the old app colour will be inspected for the number of instances
 it is running at the time of deployment, and the new app colour started with
-that number of instances.
+that number of instances, within the bounds of the autoscaling policy min/max
+thresholds.
 
 ## Hooks
 
