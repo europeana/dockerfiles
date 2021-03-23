@@ -67,9 +67,12 @@ docker run --env-file .env --mount type=bind,source=/path/to/app,target=/deploy 
 
 #### With a Docker image
 
+To deploy with a Docker image instead of a buildpack, set the env var `CF_APP_TYPE=docker`.
+
 For example:
 ```
 docker run --env-file .env \
+       -e CF_APP_TYPE=docker \
        europeana/cf-blue-green-deploy \
        deploy --docker-image nginx -m 32M
 ```
@@ -100,6 +103,15 @@ to point to it.
 4. The route `www.example.org` is unmapped from the old colour (if there is one)
 5. The old colour is stopped (if there is one)
 
+## Autoscaling
+
+If an autoscaling policy is supplied at `/autoscaling-policy.json`, it will be
+applied to the new app colour. If none is supplied, but the old colour has one,
+that will be copied to the new.
+
+In addition, the old app colour will be inspected for the number of instances
+it is running at the time of deployment, and the new app colour started with
+that number of instances.
 
 ## Hooks
 
