@@ -34,9 +34,8 @@ run_hook() {
   hook_path=/hooks/$1
   if [ -f "${hook_path}" ]; then
     echo "Running hook $1"
-    ${hook_path} "${@:2}"
-    echo "OK"
     echo
+    ${hook_path} "${@:2}"
   fi
 }
 
