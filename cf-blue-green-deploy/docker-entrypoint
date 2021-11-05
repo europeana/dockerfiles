@@ -166,9 +166,9 @@ deploy() {
   # Push & scale
   run_hook "pre-push" ${old_app_name} ${new_app_name}
   cf push ${new_app_name} --instances ${instance_count} ${push_args}
-  wait_for_running_instances ${new_app_name} ${instance_count}
 
   if [ "${CF_AUTOSCALING}" == "true" ]; then
+    wait_for_running_instances ${new_app_name} ${instance_count}
     if [ -f ${autoscaling_policy_file} ]; then
       echo
       echo "Attaching autoscaling policy"
