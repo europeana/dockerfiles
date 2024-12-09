@@ -1,11 +1,10 @@
-# Five Zero Three
+# Europeana 1914-1918 Decommission
 
-NGINX Docker image which always responds with 204 static HTML content.
+NGINX Docker image which always responds with 200 static HTML content.
 
-Intended to inform users to the decommisioning of the europeana 1914-1918 platform and provide a link to the europeana.eu site.
+Intended to inform users that the europeana 1914-1918 platform has been decommissioned and provide a link to the europeana.eu site.
 
-Clients will receive
-an [HTML response](./usr/share/nginx/html/index.html).
+Clients will receive an [HTML response](./usr/share/nginx/html/index.html).
 
 ## Build
 
