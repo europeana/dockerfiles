@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html>
   <head>
@@ -10,6 +9,6 @@
   </head>
   <body>
     <h1>Service Unavailable</h1>
-    <p>This website has been decommissioned.</p>
+    <p>${DECOMMISSION_NOTICE}</p>
   </body>
 </html>

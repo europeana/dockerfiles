@@ -4,16 +4,15 @@ NGINX Docker image which always responds with 200 static HTML content.
 
 Intended to inform users about decommmisioned services.
 
-Clients will receive an [HTML response](./usr/share/nginx/html/index.html).
+Clients will receive an [HTML response](./usr/share/nginx/html/index.html). Which defaults to include the notice "This site has been decommissioned."
 
-For specific deployements additional text can be added to index.html on the running container.
+For specific deployements the notice text can be modified by setting an ENV value for `DECOMMISSION_NOTICE`.
 
-For example, locally run:
+Example:
 
 ```
-docker exec decommissioned-site sed -i '14 i <p>Find additional information on <a href="https://www.europeana.eu">Europeana.eu</a>.</p>' usr/share/nginx/html/index.html
+ENV DECOMMISSION_NOTICE="This site has been decommissioned.</br>Find out more at <a href=\"https://www.europeana.eu\">Europeana.eu</a>."
 ```
-Or the contents of index.html could be overwritten entirely if larger changes should be required.
 
 ## Build
 
