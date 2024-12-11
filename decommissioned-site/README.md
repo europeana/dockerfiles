@@ -23,5 +23,5 @@ docker build -t europeana/decommissioned-site .
 ## Run
 
 ```sh
-docker run -p 8080:80 -it --name decommissioned-site europeana/decommissioned
+docker run -p 8080:80 -it --name decommissioned-site europeana/decommissioned-site
 ```
