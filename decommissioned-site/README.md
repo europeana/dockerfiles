@@ -1,6 +1,6 @@
 # Decommissioned site
 
-NGINX Docker image which always responds with 200 static HTML content.
+NGINX Docker image which always responds with 410 static HTML content.
 
 Intended to inform users about decommmisioned services.
 
@@ -12,6 +12,14 @@ Example:
 
 ```
 ENV DECOMMISSION_NOTICE="This site has been decommissioned.</br>Find out more at <a href=\"https://www.europeana.eu\">Europeana.eu</a>."
+```
+
+Additionally the page title & heading can be modified by setting an ENV value for `DECOMMISSION_TITLE`.
+
+Example:
+
+```
+ENV DECOMMISSION_TITLE="Decommissioned | website"
 ```
 
 ## Build
