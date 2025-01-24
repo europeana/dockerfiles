@@ -19,7 +19,7 @@ Additionally the page title & heading can be modified by setting an ENV value fo
 Example:
 
 ```
-ENV DECOMMISSION_TITLE="Decommissioned | website"
+ENV DECOMMISSION_TITLE="Decommissioned website"
 ```
 
 ## Build
